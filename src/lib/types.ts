@@ -16,6 +16,8 @@ export type Recommendation = "BUY" | "CAUTION" | "SKIP";
 export type FeeModel = "SIMPLE" | "TIERED";
 
 export type EvaluationInput = {
+  vin?: string;
+
   year: number;
   make: string;
   model: string;
@@ -38,7 +40,7 @@ export type EvaluationInput = {
   floodSeverity: Severity;
 
   // Overrides (optional)
-  repairOverride?: number; // single number override for repair
+  repairOverride?: number;
   partsOverride?: number;
   laborHoursOverride?: number;
 };
@@ -91,25 +93,22 @@ export type SavedEvaluation = {
 };
 
 export type AppSettings = {
-  targetProfit: number; // $
-  minProfitMarginPct: number; // percent
+  targetProfit: number;
+  minProfitMarginPct: number;
 
   feeModel: FeeModel;
 
   // SIMPLE fees: flat + %
-  feeFlat: number; // $
-  feePct: number; // percent
+  feeFlat: number;
+  feePct: number;
 
-  // Transport default
-  transportAverage: number; // $
+  transportAverage: number;
 
-  // Buffers / rules
-  riskBufferPct: number; // percent
-  laborRate: number; // $/hr
-  highMileageThreshold: number; // miles
-  veryHighMileageThreshold: number; // miles
+  riskBufferPct: number;
+  laborRate: number;
+  highMileageThreshold: number;
+  veryHighMileageThreshold: number;
   acceptFloodRisk: boolean;
 
-  // Quick mode default
   defaultQuickMode: boolean;
 };

@@ -72,12 +72,22 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   );
 }
 
-function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function Card({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-2xl bg-white border shadow-sm p-4">
       <div className="mb-3">
         <h2 className="text-lg font-semibold">{title}</h2>
-        {subtitle ? <p className="text-sm text-slate-600 mt-0.5">{subtitle}</p> : null}
+        {subtitle ? (
+          <p className="text-sm text-slate-600 mt-0.5">{subtitle}</p>
+        ) : null}
       </div>
       {children}
     </section>
@@ -98,6 +108,9 @@ export default function NewEvaluationPage() {
   const [evals, setEvals] = useState<SavedEvaluation[]>([]);
   const [quickMode, setQuickMode] = useState(DEFAULT_SETTINGS.defaultQuickMode);
 
+  const [vinLoading, setVinLoading] = useState(false);
+  const [vinError, setVinError] = useState<string | null>(null);
+
   useEffect(() => {
     const s = loadSettings();
     setSettings(s);
@@ -106,6 +119,7 @@ export default function NewEvaluationPage() {
   }, []);
 
   const [input, setInput] = useState<EvaluationInput>({
+    vin: "",
     year: new Date().getFullYear(),
     make: "",
     model: "",
@@ -136,9 +150,45 @@ export default function NewEvaluationPage() {
     setInput((p) => ({ ...p, transportEstimate: settings.transportAverage }));
   }, [settings.transportAverage]);
 
-  const result = useMemo(() => computeEvaluation(input, settings), [input, settings]);
+  async function decodeVin() {
+    const vin = (input.vin || "").trim();
+    setVinError(null);
 
-  // Make/Model optional in MVP (for speed)
+    if (!vin) {
+      setVinError("Enter a VIN first.");
+      return;
+    }
+
+    try {
+      setVinLoading(true);
+      const res = await fetch(`/api/vin?vin=${encodeURIComponent(vin)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setVinError(data?.error || "VIN decode failed.");
+        return;
+      }
+
+      setInput((p) => ({
+        ...p,
+        vin: data.vin || p.vin,
+        year: data.year || p.year,
+        make: data.make || p.make,
+        model: data.model || p.model,
+        trim: data.trim || p.trim,
+      }));
+    } catch {
+      setVinError("Network error decoding VIN.");
+    } finally {
+      setVinLoading(false);
+    }
+  }
+
+  const result = useMemo(
+    () => computeEvaluation(input, settings),
+    [input, settings]
+  );
+
   const requiredOk =
     input.year > 1900 &&
     input.mileage >= 0 &&
@@ -177,7 +227,9 @@ export default function NewEvaluationPage() {
           <button
             className={[
               "rounded-xl border px-3 py-2 text-sm",
-              quickMode ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50",
+              quickMode
+                ? "bg-slate-900 text-white border-slate-900"
+                : "hover:bg-slate-50",
             ].join(" ")}
             onClick={() => setQuickMode(true)}
           >
@@ -186,7 +238,9 @@ export default function NewEvaluationPage() {
           <button
             className={[
               "rounded-xl border px-3 py-2 text-sm",
-              !quickMode ? "bg-slate-900 text-white border-slate-900" : "hover:bg-slate-50",
+              !quickMode
+                ? "bg-slate-900 text-white border-slate-900"
+                : "hover:bg-slate-50",
             ].join(" ")}
             onClick={() => setQuickMode(false)}
           >
@@ -206,15 +260,50 @@ export default function NewEvaluationPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card
           title="New Evaluation"
-          subtitle={quickMode ? "Fast entry: only the essentials." : "Full entry: more detail = better risk scoring."}
+          subtitle={
+            quickMode
+              ? "Fast entry: only the essentials."
+              : "Full entry: more detail = better risk scoring."
+          }
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* VIN */}
+            <div className="sm:col-span-2">
+              <Label>VIN (recommended)</Label>
+              <div className="mt-1 flex gap-2">
+                <Input
+                  value={input.vin ?? ""}
+                  placeholder="Paste VIN (ex: 1HGCM82633A004352)"
+                  onChange={(e) =>
+                    setInput((p) => ({ ...p, vin: e.target.value }))
+                  }
+                />
+                <button
+                  type="button"
+                  className="rounded-xl border px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-40"
+                  onClick={decodeVin}
+                  disabled={vinLoading}
+                >
+                  {vinLoading ? "Decoding…" : "Decode"}
+                </button>
+              </div>
+              {vinError ? (
+                <div className="text-xs text-rose-600 mt-1">{vinError}</div>
+              ) : (
+                <div className="text-xs text-slate-500 mt-1">
+                  Auto-fills Year/Make/Model using the free NHTSA VIN decoder.
+                </div>
+              )}
+            </div>
+
             <div>
               <Label>Year*</Label>
               <Input
                 type="number"
                 value={input.year}
-                onChange={(e) => setInput((p) => ({ ...p, year: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setInput((p) => ({ ...p, year: Number(e.target.value) }))
+                }
               />
             </div>
 
@@ -223,7 +312,9 @@ export default function NewEvaluationPage() {
               <Input
                 type="number"
                 value={input.mileage}
-                onChange={(e) => setInput((p) => ({ ...p, mileage: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setInput((p) => ({ ...p, mileage: Number(e.target.value) }))
+                }
               />
             </div>
 
@@ -232,7 +323,9 @@ export default function NewEvaluationPage() {
               <Input
                 value={input.make}
                 placeholder="Toyota / BMW"
-                onChange={(e) => setInput((p) => ({ ...p, make: e.target.value }))}
+                onChange={(e) =>
+                  setInput((p) => ({ ...p, make: e.target.value }))
+                }
               />
             </div>
 
@@ -241,7 +334,9 @@ export default function NewEvaluationPage() {
               <Input
                 value={input.model}
                 placeholder="Corolla / 550i"
-                onChange={(e) => setInput((p) => ({ ...p, model: e.target.value }))}
+                onChange={(e) =>
+                  setInput((p) => ({ ...p, model: e.target.value }))
+                }
               />
             </div>
 
@@ -251,7 +346,9 @@ export default function NewEvaluationPage() {
                 <Input
                   value={input.trim}
                   placeholder="LE / XSE / xDrive / etc."
-                  onChange={(e) => setInput((p) => ({ ...p, trim: e.target.value }))}
+                  onChange={(e) =>
+                    setInput((p) => ({ ...p, trim: e.target.value }))
+                  }
                 />
               </div>
             ) : null}
@@ -260,7 +357,12 @@ export default function NewEvaluationPage() {
               <Label>Damage type</Label>
               <Select
                 value={input.damageType}
-                onChange={(e) => setInput((p) => ({ ...p, damageType: e.target.value as DamageType }))}
+                onChange={(e) =>
+                  setInput((p) => ({
+                    ...p,
+                    damageType: e.target.value as DamageType,
+                  }))
+                }
               >
                 {damageTypes.map((d) => (
                   <option key={d.value} value={d.value}>
@@ -284,7 +386,9 @@ export default function NewEvaluationPage() {
                           ? "bg-slate-900 text-white border-slate-900"
                           : "hover:bg-slate-50",
                       ].join(" ")}
-                      onClick={() => setInput((p) => ({ ...p, cosmeticSeverity: s }))}
+                      onClick={() =>
+                        setInput((p) => ({ ...p, cosmeticSeverity: s }))
+                      }
                     >
                       {s}
                     </button>
@@ -296,10 +400,17 @@ export default function NewEvaluationPage() {
                 <Label>Severity (quick)</Label>
                 <Select
                   value={input.cosmeticSeverity}
-                  onChange={(e) => setInput((p) => ({ ...p, cosmeticSeverity: e.target.value as Severity }))}
+                  onChange={(e) =>
+                    setInput((p) => ({
+                      ...p,
+                      cosmeticSeverity: e.target.value as Severity,
+                    }))
+                  }
                 >
                   {severities.map((s) => (
-                    <option key={s} value={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
                   ))}
                 </Select>
               </div>
@@ -310,7 +421,9 @@ export default function NewEvaluationPage() {
               <Input
                 type="number"
                 value={input.bidPrice}
-                onChange={(e) => setInput((p) => ({ ...p, bidPrice: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setInput((p) => ({ ...p, bidPrice: Number(e.target.value) }))
+                }
               />
             </div>
 
@@ -319,7 +432,12 @@ export default function NewEvaluationPage() {
               <Input
                 type="number"
                 value={input.transportEstimate}
-                onChange={(e) => setInput((p) => ({ ...p, transportEstimate: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setInput((p) => ({
+                    ...p,
+                    transportEstimate: Number(e.target.value),
+                  }))
+                }
               />
               <div className="text-xs text-slate-500 mt-1">
                 Default from Settings: ${settings.transportAverage}
@@ -331,192 +449,39 @@ export default function NewEvaluationPage() {
               <Input
                 type="number"
                 value={input.resaleEstimate}
-                onChange={(e) => setInput((p) => ({ ...p, resaleEstimate: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setInput((p) => ({
+                    ...p,
+                    resaleEstimate: Number(e.target.value),
+                  }))
+                }
               />
             </div>
-
-            <div className="sm:col-span-2 rounded-2xl border p-3 bg-slate-50">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold">Repair</div>
-                <div className="text-xs text-slate-600">
-                  Buffer: +{settings.riskBufferPct}% (used for Max Bid)
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                <div>
-                  <Label>Repair override (optional)</Label>
-                  <Input
-                    type="number"
-                    placeholder="If you already know your number, enter it here"
-                    value={input.repairOverride ?? ""}
-                    onChange={(e) =>
-                      setInput((p) => ({
-                        ...p,
-                        repairOverride: e.target.value === "" ? undefined : Number(e.target.value),
-                      }))
-                    }
-                  />
-                  <div className="text-xs text-slate-500 mt-1">
-                    This overrides the automatic repair estimate.
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Labor rate (info)</Label>
-                  <div className="mt-1 rounded-xl border bg-white px-3 py-2 text-sm">
-                    ${settings.laborRate}/hr
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Used if you ever enable parts/labor overrides later.
-                  </div>
-                </div>
-              </div>
-
-              {!quickMode ? (
-                <div className="mt-3">
-                  <div className="text-sm font-medium">Flags</div>
-                  <div className="mt-2 flex flex-wrap gap-4">
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={input.mechanicalIssue}
-                        onChange={(e) => setInput((p) => ({ ...p, mechanicalIssue: e.target.checked }))}
-                      />
-                      Mechanical issue?
-                    </label>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={input.flood}
-                        onChange={(e) => setInput((p) => ({ ...p, flood: e.target.checked }))}
-                      />
-                      Flood?
-                    </label>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                    <div>
-                      <Label>Mechanical severity</Label>
-                      <Select
-                        value={input.mechanicalSeverity}
-                        disabled={!input.mechanicalIssue}
-                        onChange={(e) => setInput((p) => ({ ...p, mechanicalSeverity: e.target.value as Severity }))}
-                      >
-                        {severities.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Flood severity</Label>
-                      <Select
-                        value={input.floodSeverity}
-                        disabled={!input.flood}
-                        onChange={(e) => setInput((p) => ({ ...p, floodSeverity: e.target.value as Severity }))}
-                      >
-                        {severities.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            {!quickMode ? (
-              <div className="sm:col-span-2">
-                <Label>Notes</Label>
-                <textarea
-                  className="mt-1 w-full rounded-xl border px-3 py-2 min-h-[90px] outline-none focus:ring-2 focus:ring-slate-200"
-                  value={input.notes}
-                  onChange={(e) => setInput((p) => ({ ...p, notes: e.target.value }))}
-                  placeholder="Anything you noticed from the listing…"
-                />
-              </div>
-            ) : null}
           </div>
         </Card>
 
-        <Card title="Results" subtitle="Updates instantly. Max Bid solves for fee model + repair buffer.">
-          <div className="flex items-start justify-between gap-3">
-            <div className="text-sm text-slate-600">
-              Fee model: <span className="font-medium">{settings.feeModel}</span>
-              {result.fees.tierNote ? <div className="text-xs mt-1">{result.fees.tierNote}</div> : null}
-            </div>
-
-            <div
-              className={[
-                "px-3 py-1.5 rounded-xl text-sm font-medium border",
-                result.recommendation === "BUY"
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                  : result.recommendation === "CAUTION"
-                  ? "bg-amber-50 border-amber-200 text-amber-800"
-                  : "bg-rose-50 border-rose-200 text-rose-800",
-              ].join(" ")}
-            >
-              {result.recommendation === "BUY"
-                ? "✅ BUY"
-                : result.recommendation === "CAUTION"
-                ? "⚠️ CAUTION"
-                : "🚫 SKIP"}
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Card
+          title="Results"
+          subtitle="Updates instantly. (VIN decode just saves time; math stays the same.)"
+        >
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Stat label="Repair (recommended)" value={money(result.repair.recommended)} />
-            <Stat label="Repair (buffered for max bid)" value={money(result.repair.bufferedRecommended)} />
             <Stat label="Fees (total)" value={money(result.fees.total)} />
             <Stat label="Transport" value={money(result.transport)} />
             <Stat label="All-in cost" value={money(result.allInCost)} />
-            <Stat label="Resale (input)" value={money(input.resaleEstimate)} />
             <Stat label="Profit ($)" value={money(result.profit)} />
             <Stat label="Profit margin" value={pct(result.profitMargin)} />
             <Stat label="ROI" value={pct(result.roi)} />
             <Stat label="Max Bid (recommended)" value={money(result.maxBid)} />
           </div>
 
-          <div className="mt-4 rounded-2xl border p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Risk</div>
-              <div
-                className={[
-                  "text-sm font-medium px-2.5 py-1 rounded-xl border",
-                  result.risk.rating === "LOW"
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                    : result.risk.rating === "MEDIUM"
-                    ? "bg-amber-50 border-amber-200 text-amber-800"
-                    : "bg-rose-50 border-rose-200 text-rose-800",
-                ].join(" ")}
-              >
-                {result.risk.rating}
-              </div>
-            </div>
-
-            <div className="mt-2 text-xs text-slate-600">
-              Risk score: {result.risk.score} (higher = riskier)
-            </div>
-
-            <ul className="mt-2 list-disc pl-5 text-sm text-slate-700 space-y-1">
-              {result.risk.reasons.length ? (
-                result.risk.reasons.map((r, idx) => <li key={idx}>{r}</li>)
-              ) : (
-                <li>No major risk flags detected.</li>
-              )}
-            </ul>
-          </div>
-
           <div className="mt-4 rounded-2xl border p-3 bg-slate-50">
             <div className="text-sm font-semibold">Repair transparency</div>
             <ul className="mt-2 list-disc pl-5 text-sm text-slate-700 space-y-1">
-              {result.repair.explanation.map((x, i) => <li key={i}>{x}</li>)}
+              {result.repair.explanation.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
             </ul>
-          </div>
-
-          <div className="mt-4 rounded-2xl border p-3">
-            <div className="text-sm font-semibold">Fees breakdown</div>
-            <div className="mt-2 text-sm text-slate-700 grid grid-cols-2 gap-2">
-              <div>Flat</div><div className="text-right">{money(result.fees.flat)}</div>
-              <div>Percent</div><div className="text-right">{money(result.fees.percent)}</div>
-              <div className="font-medium">Total</div><div className="text-right font-medium">{money(result.fees.total)}</div>
-            </div>
           </div>
         </Card>
       </div>
